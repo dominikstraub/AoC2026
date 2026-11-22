@@ -42,7 +42,9 @@ struct AdventOfCode: AsyncParsableCommand {
     case failed
 
     var timing: String {
-      if case .solved(let duration) = self { "\(duration)" } else { "n/a" }
+      guard case .solved(let duration) = self else { return "n/a" }
+      // String(format:) without a locale always uses "." — scripts/benchmark parses this.
+      return String(format: "%.3f ms", duration / .milliseconds(1))
     }
   }
 

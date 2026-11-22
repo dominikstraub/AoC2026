@@ -62,7 +62,8 @@ Then implement part 1 and 2. `swift run` runs the most recent challenge by defau
 
 To supply command line arguments use `swift run AdventOfCode`. For example,
 `swift run -c release AdventOfCode --benchmark 3` builds the binary with full
-optimizations, and benchmarks the challenge for day 3.
+optimizations, and benchmarks the challenge for day 3. `scripts/benchmark 3` runs it
+several times and records the best time per part in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Linting and Formatting
 

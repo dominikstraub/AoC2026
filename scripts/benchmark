@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# awk and bash's regex follow the locale; a "," decimal separator would break parsing.
+export LC_ALL=C
+
+RUNS=5
+FILE=BENCHMARKS.md
+
+cd "$(dirname "$0")/.."
+
+usage() {
+  cat <<EOF
+Usage: scripts/benchmark [day]  run a registered day $RUNS times in a release build and record the
+                                best time per part in $FILE (day defaults to the latest)
+       scripts/benchmark --all  the same for every registered day
+EOF
+}
+
+die() {
+  echo "$*" >&2
+  exit 1
+}
+
+# Smallest of the "1.234 ms" / "n/a" lines, as the bare number the CLI printed (empty if all n/a).
+best() {
+  awk 'NF && $1 != "n/a" && (best == "" || $1 + 0 < best + 0) { best = $1 } END { print best }'
+}
+
+if (($# > 1)); then
+  usage >&2
+  exit 2
+fi
+
+# The CLI's registry, not the Sources/DayNN.swift files: an unregistered day can't be run.
+registered=$(sed -nE 's/^ *Day([0-9]{2})\(\),?$/\1/p' Sources/AllChallenges.swift)
+solutions=$(grep -vx 00 <<<"$registered" || true)
+
+case "${1:-}" in
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  --all)
+    days=$solutions
+    ;;
+  "")
+    days=$(tail -n 1 <<<"$solutions")
+    ;;
+  *)
+    if ! [[ $1 =~ ^[0-9]{1,2}$ ]]; then die "Day must be a number, got '$1'."; fi
+    days=$(printf %02d "$((10#$1))")
+    if ! grep -qx "$days" <<<"$registered"; then
+      die "Day $((10#$days)) isn't registered in Sources/AllChallenges.swift."
+    fi
+    ;;
+esac
+if [[ -z $days ]]; then die "No day registered besides Day00 yet."; fi
+
+# Check every row before the slow part, so --all doesn't stop halfway.
+for nn in $days; do
+  if ! grep -q "^| \[$((10#$nn))\](" "$FILE"; then die "$FILE has no row for day $((10#$nn))."; fi
+done
+
+swift build -c release --product AdventOfCode
+bin="$(swift build -c release --show-bin-path)/AdventOfCode"
+
+timing='^Part 1 took ([0-9]+\.[0-9]+ ms|n/a), part 2 took ([0-9]+\.[0-9]+ ms|n/a)\.$'
+failed=""
+for nn in $days; do
+  day=$((10#$nn))
+  times1="" times2=""
+  for ((run = 1; run <= RUNS; run++)); do
+    if ! output=$("$bin" "$day" --benchmark 2>&1); then
+      printf '%s\n' "$output" >&2
+      echo "Day $day failed, so $FILE keeps its old row." >&2
+      failed+=" $day"
+      continue 2
+    fi
+    line=$(grep -E "$timing" <<<"$output" | tail -n 1) || true
+    if ! [[ $line =~ $timing ]]; then die "No timing line in day $day's output:"$'\n'"$output"; fi
+    times1+="${BASH_REMATCH[1]}"$'\n'
+    times2+="${BASH_REMATCH[2]}"$'\n'
+  done
+  part1=$(best <<<"$times1")
+  part2=$(best <<<"$times2")
+
+  # Rewritten in place rather than via mktemp + mv, which would leave the file at mode 0600.
+  content=$(awk -v prefix="| [$day](" -v part1="$part1" -v part2="$part2" '
+    index($0, prefix) == 1 { $0 = substr($0, 1, index($0, ") |")) " | " part1 " | " part2 " |" }
+    { print }' "$FILE")
+  printf '%s\n' "$content" >"$FILE"
+  echo "Updated $FILE, day $day: part 1 ${part1:-n/a}${part1:+ ms}, part 2 ${part2:-n/a}${part2:+ ms}"
+done
+if [[ -n $failed ]]; then die "Failed days:$failed"; fi

@@ -67,6 +67,12 @@ struct HelpersTests {
     #expect(failed == .failed)
   }
 
+  @Test func timingInMilliseconds() {
+    #expect(AdventOfCode.PartOutcome.solved(.microseconds(1500)).timing == "1.500 ms")
+    #expect(AdventOfCode.PartOutcome.solved(.seconds(3)).timing == "3000.000 ms")
+    #expect(AdventOfCode.PartOutcome.solved(.microseconds(12)).timing == "0.012 ms")
+  }
+
   @Test func safeSubscriptUsesOffsets() {
     let values = [10, 20, 30, 40]
     #expect(values[safe: 1] == 20)
